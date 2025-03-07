@@ -1,0 +1,34 @@
+server:
+  port: 8080
+
+spring:
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: http://localhost:8085/realms/flashdash
+          jwk-set-uri: http://localhost:8085/realms/flashdash/protocol/openid-connect/certs
+  cloud:
+    gateway:
+      routes:
+        - id: flashdash-core-routes
+          uri: http://127.0.0.1:8000
+          predicates:
+            - Path=/**
+
+keycloak:
+  auth-server-url: http://localhost:8085
+  realm: flashdash
+  resource: flashdash-api-client
+  credentials:
+    secret: ${KEYCLOAK_SECRET}
+  bearer-only: true
+
+logging:
+  level:
+    root: INFO
+    org.springframework.cloud.gateway: DEBUG
+    org.springframework.web.reactive.function.client: DEBUG
+    org.springframework.http.server.reactive: TRACE
+    org.springframework.cloud.gateway.filter: DEBUG
+    org.springframework.cloud.gateway.route: DEBUG
