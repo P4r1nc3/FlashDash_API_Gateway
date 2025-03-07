@@ -18,20 +18,50 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(HttpStatusCodeException.class)
     public ResponseEntity<ErrorResponse> handleHttpStatusCodeException(HttpStatusCodeException ex) {
-        HttpStatus status = (HttpStatus) ex.getStatusCode();
+        HttpStatus status = HttpStatus.valueOf(ex.getStatusCode().value());
         String responseBody = ex.getResponseBodyAsString();
-        logger.error("Caught HttpStatusCodeException: {}, Response body: {}", status, responseBody, ex);
+
+        logger.error("HTTP Error from external service: {}, Response body: {}", status, responseBody);
 
         ErrorResponse errorResponse = new ErrorResponse(
                 status.value(),
                 status.getReasonPhrase(),
-                "External service returned an error: "
-                        + (responseBody.isEmpty() ? "No body" : responseBody),
-                "Please verify the remote service or contact support.",
+                "Keycloak returned an error: " + (responseBody.isEmpty() ? "No response body" : responseBody),
+                "Please check your credentials or contact support.",
                 UUID.randomUUID().toString()
         );
 
         return new ResponseEntity<>(errorResponse, status);
+    }
+
+    @ExceptionHandler(jakarta.ws.rs.NotAuthorizedException.class)
+    public ResponseEntity<ErrorResponse> handleNotAuthorizedException(jakarta.ws.rs.NotAuthorizedException ex) {
+        logger.error("Unauthorized access attempt: {}", ex.getMessage());
+
+        ErrorResponse errorResponse = new ErrorResponse(
+                HttpStatus.UNAUTHORIZED.value(),
+                "Unauthorized",
+                "Invalid username or password.",
+                "Please check your credentials and try again.",
+                UUID.randomUUID().toString()
+        );
+
+        return new ResponseEntity<>(errorResponse, HttpStatus.UNAUTHORIZED);
+    }
+
+    @ExceptionHandler(RuntimeException.class)
+    public ResponseEntity<ErrorResponse> handleRuntimeException(RuntimeException ex) {
+        logger.error("RuntimeException occurred: {}", ex.getMessage(), ex);
+
+        ErrorResponse errorResponse = new ErrorResponse(
+                HttpStatus.CONFLICT.value(),
+                "Conflict",
+                ex.getMessage(),
+                "Resolve the conflict or contact support.",
+                UUID.randomUUID().toString()
+        );
+
+        return new ResponseEntity<>(errorResponse, HttpStatus.CONFLICT);
     }
 
     @ExceptionHandler(Exception.class)
