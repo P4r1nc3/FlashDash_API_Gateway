@@ -79,19 +79,24 @@ public class AuthService {
         headers.setContentType(MediaType.APPLICATION_JSON);
         headers.set("Authorization", "Bearer " + getAdminAccessToken());
 
+        // Generowanie userFrn
         String userFrn = UUID.randomUUID().toString();
 
+        // Tworzenie użytkownika
         Map<String, Object> user = new HashMap<>();
         user.put("username", registerRequest.getUsername());
         user.put("email", registerRequest.getEmail());
         user.put("firstName", registerRequest.getFirstName());
         user.put("lastName", registerRequest.getLastName());
         user.put("enabled", true);
+        user.put("emailVerified", false); // Użytkownik musi potwierdzić e-mail
 
+        // Dodanie `userFrn` jako atrybutu użytkownika w Keycloak
         Map<String, String> attributes = new HashMap<>();
         attributes.put("userFrn", userFrn);
         user.put("attributes", attributes);
 
+        // Hasło użytkownika
         Map<String, String> credentials = new HashMap<>();
         credentials.put("type", "password");
         credentials.put("value", registerRequest.getPassword());
@@ -104,7 +109,7 @@ public class AuthService {
         ResponseEntity<String> response = restTemplate.postForEntity(keycloakAdminUrl, requestEntity, String.class);
 
         if (response.getStatusCode() == HttpStatus.CREATED) {
-            logger.info("User {} registered successfully with userFrn {}", registerRequest.getUsername(), userFrn);
+            logger.info("User {} registered successfully, waiting for email verification", registerRequest.getUsername());
         } else {
             throw new RuntimeException("User registration failed: " + response.getBody());
         }
