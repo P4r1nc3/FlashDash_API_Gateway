@@ -1,26 +1,24 @@
 package com.flashdash.gateway.service;
 
+import com.flashdash.gateway.dto.request.LoginRequest;
 import com.flashdash.gateway.dto.request.RegisterRequest;
 import com.flashdash.gateway.dto.response.AuthResponse;
-import com.flashdash.gateway.dto.request.LoginRequest;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import jakarta.ws.rs.core.Response;
+import org.keycloak.OAuth2Constants;
+import org.keycloak.admin.client.Keycloak;
+import org.keycloak.admin.client.KeycloakBuilder;
+import org.keycloak.admin.client.resource.UsersResource;
+import org.keycloak.representations.AccessTokenResponse;
+import org.keycloak.representations.idm.CredentialRepresentation;
+import org.keycloak.representations.idm.UserRepresentation;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.*;
 import org.springframework.stereotype.Service;
-import org.springframework.util.LinkedMultiValueMap;
-import org.springframework.util.MultiValueMap;
-import org.springframework.web.client.RestTemplate;
 
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.Collections;
 import java.util.UUID;
 
 @Service
 public class AuthService {
-
-    private static final Logger logger = LoggerFactory.getLogger(AuthService.class);
 
     @Value("${keycloak.auth-server-url}")
     private String keycloakUrl;
@@ -28,113 +26,91 @@ public class AuthService {
     @Value("${keycloak.realm}")
     private String realm;
 
-    @Value("${keycloak.resource}")
+    @Value("${keycloak.client-id}")
     private String clientId;
 
-    @Value("${keycloak.credentials.secret}")
+    @Value("${keycloak.client-secret}")
     private String clientSecret;
 
-    private final RestTemplate restTemplate;
+    @Value("${keycloak.admin-client-id}")
+    private String adminClientId;
 
-    public AuthService() {
-        this.restTemplate = new RestTemplate();
+    @Value("${keycloak.admin-username}")
+    private String adminUsername;
+
+    @Value("${keycloak.admin-password}")
+    private String adminPassword;
+
+    private Keycloak getKeycloakInstance() {
+        return KeycloakBuilder.builder()
+                .serverUrl(keycloakUrl)
+                .realm("master")
+                .clientId(adminClientId)
+                .username(adminUsername)
+                .password(adminPassword)
+                .grantType(OAuth2Constants.PASSWORD)
+                .build();
     }
 
     public AuthResponse authenticate(LoginRequest loginRequest) {
-        logger.info("Attempting to authenticate user: {}", loginRequest.getUsername());
+        Keycloak keycloak = KeycloakBuilder.builder()
+                .serverUrl(keycloakUrl)
+                .realm(realm)
+                .clientId(clientId)
+                .clientSecret(clientSecret)
+                .grantType(OAuth2Constants.PASSWORD)
+                .username(loginRequest.getUsername())
+                .password(loginRequest.getPassword())
+                .build();
 
-        String tokenUrl = keycloakUrl + "/realms/" + realm + "/protocol/openid-connect/token";
-
-        MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
-        form.add("grant_type", "password");
-        form.add("client_id", clientId);
-        form.add("client_secret", clientSecret);
-        form.add("username", loginRequest.getUsername());
-        form.add("password", loginRequest.getPassword());
-
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
-        HttpEntity<MultiValueMap<String, String>> requestEntity = new HttpEntity<>(form, headers);
-
-        ResponseEntity<Map> response = restTemplate.postForEntity(tokenUrl, requestEntity, Map.class);
-
-        logger.info("User {} successfully authenticated, token type: {}",
-                loginRequest.getUsername(), response.getBody().get("token_type"));
+        AccessTokenResponse tokenResponse = keycloak.tokenManager().getAccessToken();
 
         return new AuthResponse(
-                (String) response.getBody().get("token_type"),
-                (String) response.getBody().get("access_token"),
-                (Integer) response.getBody().get("expires_in"),
-                (String) response.getBody().get("refresh_token"),
-                (Integer) response.getBody().get("refresh_expires_in")
+                tokenResponse.getTokenType(),
+                tokenResponse.getToken(),
+                tokenResponse.getExpiresIn(),
+                tokenResponse.getRefreshToken(),
+                tokenResponse.getRefreshExpiresIn()
         );
     }
 
-    public void register(RegisterRequest registerRequest) {
-        logger.info("Registering user: {}", registerRequest.getUsername());
+    public RegisterRequest register(RegisterRequest registerRequest) {
+        Keycloak keycloak = getKeycloakInstance();
+        UsersResource usersResource = keycloak.realm(realm).users();
 
-        String keycloakAdminUrl = keycloakUrl + "/admin/realms/" + realm + "/users";
-
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-        headers.set("Authorization", "Bearer " + getAdminAccessToken());
-
-        // Generowanie userFrn
         String userFrn = UUID.randomUUID().toString();
 
-        // Tworzenie użytkownika
-        Map<String, Object> user = new HashMap<>();
-        user.put("username", registerRequest.getUsername());
-        user.put("email", registerRequest.getEmail());
-        user.put("firstName", registerRequest.getFirstName());
-        user.put("lastName", registerRequest.getLastName());
-        user.put("enabled", true);
-        user.put("emailVerified", false); // Użytkownik musi potwierdzić e-mail
+        UserRepresentation user = new UserRepresentation();
+        user.setUsername(registerRequest.getUsername());
+        user.setEmail(registerRequest.getEmail());
+        user.setFirstName(registerRequest.getFirstName());
+        user.setLastName(registerRequest.getLastName());
+        user.setEnabled(true);
+        user.setEmailVerified(false);
+        user.setAttributes(Collections.singletonMap("userFrn", Collections.singletonList(userFrn)));
 
-        // Dodanie `userFrn` jako atrybutu użytkownika w Keycloak
-        Map<String, String> attributes = new HashMap<>();
-        attributes.put("userFrn", userFrn);
-        user.put("attributes", attributes);
-
-        // Hasło użytkownika
-        Map<String, String> credentials = new HashMap<>();
-        credentials.put("type", "password");
-        credentials.put("value", registerRequest.getPassword());
-        credentials.put("temporary", "false");
-
-        user.put("credentials", List.of(credentials));
-
-        HttpEntity<Map<String, Object>> requestEntity = new HttpEntity<>(user, headers);
-
-        ResponseEntity<String> response = restTemplate.postForEntity(keycloakAdminUrl, requestEntity, String.class);
-
-        if (response.getStatusCode() == HttpStatus.CREATED) {
-            logger.info("User {} registered successfully, waiting for email verification", registerRequest.getUsername());
-        } else {
-            throw new RuntimeException("User registration failed: " + response.getBody());
+        Response response = usersResource.create(user);
+        if (response.getStatus() != 201) {
+            throw new RuntimeException("User registration failed: " + response.getStatus());
         }
+
+        String userId = usersResource.search(registerRequest.getUsername()).get(0).getId();
+
+        CredentialRepresentation passwordCred = new CredentialRepresentation();
+        passwordCred.setTemporary(false);
+        passwordCred.setType(CredentialRepresentation.PASSWORD);
+        passwordCred.setValue(registerRequest.getPassword());
+
+        usersResource.get(userId).resetPassword(passwordCred);
+
+        emailVerification(userId);
+
+        return registerRequest;
     }
 
-    private String getAdminAccessToken() {
-        String tokenUrl = keycloakUrl + "/realms/master/protocol/openid-connect/token";
-
-        MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
-        form.add("grant_type", "password");
-        form.add("client_id", "admin-cli");
-        form.add("username", "admin");
-        form.add("password", "admin");
-
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
-
-        HttpEntity<MultiValueMap<String, String>> requestEntity = new HttpEntity<>(form, headers);
-
-        ResponseEntity<Map> response = restTemplate.postForEntity(tokenUrl, requestEntity, Map.class);
-
-        if (response.getStatusCode() == HttpStatus.OK) {
-            return (String) response.getBody().get("access_token");
-        } else {
-            throw new RuntimeException("Failed to obtain admin token");
-        }
+    public void emailVerification(String userId) {
+        Keycloak keycloak = getKeycloakInstance();
+        UsersResource usersResource = keycloak.realm(realm).users();
+        usersResource.get(userId).sendVerifyEmail();
     }
 }

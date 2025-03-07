@@ -17,16 +17,18 @@ public class AuthController {
         this.authService = authService;
     }
 
+    @PostMapping("/register")
+    public ResponseEntity<?> register(@RequestBody RegisterRequest registerRequest) {
+        return ResponseEntity.ok(authService.register(registerRequest));
+    }
+
     @PostMapping("/login")
     public ResponseEntity<AuthResponse> login(@RequestBody LoginRequest loginRequest) {
-        AuthResponse authResponse = authService.authenticate(loginRequest);
-        return ResponseEntity.ok(authResponse);
+        return ResponseEntity.ok(authService.authenticate(loginRequest));
     }
 
-    @PostMapping("/register")
-    public ResponseEntity<String> register(@RequestBody RegisterRequest registerRequest) {
-        authService.register(registerRequest);
-        return ResponseEntity.ok("User registered successfully");
+    @PutMapping("/{userId}/resend-verification-email")
+    public void resendVerificationEmail(@PathVariable String userId) {
+        authService.emailVerification(userId);
     }
-
 }
