@@ -4,11 +4,11 @@ public class AuthResponse {
 
     private String tokenType;
     private String accessToken;
-    private int expiresIn;
+    private long expiresIn;
     private String refreshToken;
-    private int refreshExpiresIn;
+    private long refreshExpiresIn;
 
-    public AuthResponse(String tokenType, String accessToken, int expiresIn, String refreshToken, int refreshExpiresIn) {
+    public AuthResponse(String tokenType, String accessToken, long expiresIn, String refreshToken, long refreshExpiresIn) {
         this.tokenType = tokenType;
         this.accessToken = accessToken;
         this.expiresIn = expiresIn;
@@ -24,7 +24,7 @@ public class AuthResponse {
         return accessToken;
     }
 
-    public int getExpiresIn() {
+    public long getExpiresIn() {
         return expiresIn;
     }
 
@@ -32,7 +32,7 @@ public class AuthResponse {
         return refreshToken;
     }
 
-    public int getRefreshExpiresIn() {
+    public long getRefreshExpiresIn() {
         return refreshExpiresIn;
     }
 }
