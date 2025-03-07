@@ -17,11 +17,14 @@ spring:
             - Path=/**
 
 keycloak:
-  auth-server-url: http://localhost:8085
   realm: flashdash
-  resource: flashdash-api-client
-  credentials:
-    secret: ${KEYCLOAK_SECRET}
+  client-id: flashdash-api-client
+  client-secret: ${KEYCLOAK_SECRET}
+  auth-server-url: http://localhost:8085
+  admin-client-id: admin-cli
+  adminClientSecret: ${KEYCLOAK_SECRET}
+  admin-username: admin
+  admin-password: admin
   bearer-only: true
 
 logging:
